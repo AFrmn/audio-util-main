@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
-from typing import Annotated, List, Optional
+from typing import Annotated, Optional
 
 import typer
 from rich.console import Console
@@ -9,7 +9,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from combine import Audio_processing  
+from audio_processing import AudioProcessing
 
 
 class FolderSelector:
@@ -32,14 +32,14 @@ class FolderSelector:
             title="Select Output Directory for consolidated files"
         )
         return folder if folder else None
-    
+
     def select_final_folder(self) -> Optional[str]:
         """Open a folder selection dialog for processed files"""
         folder = filedialog.askdirectory(
-           title="Select output directory for processed files." 
+            title="Select output directory for processed files."
         )
         return folder if folder else None
-    
+
     def show_completion_message(self, output_dir: str):
         """Show completion message with output directory."""
         messagebox.showinfo(
@@ -81,7 +81,7 @@ def process(
     ] = False,
     noise_profile: Annotated[
         Optional[str], typer.Option(help="Path to noise profile file")
-    ] = None,       
+    ] = None,
 ):
     """
     Process WAV files: consolidate and apply filters.
@@ -98,7 +98,7 @@ def process(
         )
     )
 
-    processor = Audio_processing(input_dir)
+    processor = AudioProcessing(input_dir)
 
     # Handle GUI mode or missing arguments
     if gui or not input_dir or not output_dir:
@@ -234,7 +234,7 @@ def interactive():
     else:
         input_dir = Prompt.ask("Enter input directory path")
         output_dir = Prompt.ask("Enter output directory path")
-        
+
         if Confirm.ask("Do you have a noise profile?", default=False):
             noise_profile = Prompt.ask("Enter noise profile path")
 
@@ -255,7 +255,7 @@ def interactive():
         return
 
     # Process
-    processor = Audio_processing(input_dir)
+    processor = AudioProcessing(input_dir)
     if noise_profile:
         success = processor.process_directory(input_dir, output_dir, noise_profile)
     else:
@@ -264,9 +264,9 @@ def interactive():
     if success:
         console.print("\n[green]✅ Processing completed successfully![/green]")
         console.print(f"[blue]📁 Output files saved to: {output_dir}[/blue]")
-    
+
     if use_gui:
-        folder_selector.show_completion_message(output_dir)
+        folder_selector.show_completion_message(output_dir)  # type: ignore
     else:
         console.print("\n[red]❌ Processing failed. Check the logs for details.[/red]")
     if use_gui:
