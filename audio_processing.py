@@ -19,14 +19,43 @@ class AudioProcessing:
         if root_directory is None:
             raise ValueError("root_directory cannot be None")
         self.root_path = Path(root_directory)
-        self.out_path = self.root_path / Path("combined/")
+        self.combined_path = self.root_path / Path("combined")
+        self.filtered_path = self.root_path / Path("filtered")
         self.noise_file = Path(root_directory)
         # self.npz_file = self.root_path / Path("noise/noise.npz")
         self.console = Console()
         self.logger = self._setup_logging()
 
         # Create paths for results directories
-        Path(self.out_path).mkdir(parents=True, exist_ok=True)
+        Path(self.combined_path).mkdir(parents=True, exist_ok=True)
+
+    def _combine_wave_file_list(
+        self, file_list: list, cohort: str, session: str
+    ) -> None:
+        """
+        Combines general wave file data for a cohort/session combo from all initial
+
+        Args:
+            file_list (list): List of file names under a session
+            cohort (str): Name given to the cohort directory
+            session (str): name given to the session directory
+        """
+        data = []
+        for wave_file in file_list:
+            with wave.open(
+                str(os.path.join(self.root_path, cohort, session, wave_file)), "rb"
+            ) as w:
+                data.append([w.getparams(), w.readframes(w.getnframes())])
+
+            out_path = self.combined_path / Path(cohort)
+            out_path.mkdir(parents=True, exist_ok=True)
+
+            out_file = out_path / Path(session + ".wav")
+            with wave.open(str(out_file), "wb") as output:
+                if data:  # Check if we have data
+                    output.setparams(data[0][0])
+                    for _, frames in data:
+                        output.writeframes(frames)
 
     def _setup_logging(self) -> logging.Logger:
         """Setup logging configuration."""
@@ -127,29 +156,25 @@ class AudioProcessing:
             self.logger.error(f"Error loading {filepath}: {e}")
             return None, None
 
-    def consolidate_audio_files(self, wave_file: list, out_file: Path) -> bool:
+    def consolidate_audio_files(self, wave_files: dict) -> bool:
         """
         Recursively find all WAV files in directory and subdirectories.
         Args:
             root_directory: Path to the root directory to search
+            wave_files: Dict of WAV file paths organized by Cohort and Session
+                for example
+                wave_files["Cohort2"]["Session 123"] = ["file1.wav", "file2.wav"]
         Returns:
-            List of WAV file paths
+            bool: Success indicator
         """
         try:
-            data = []
-            for wave_file in wave_file:
-                with wave.open(str(wave_file), "rb") as w:
-                    data.append([w.getparams(), w.readframes(w.getnframes())])
-
-            with wave.open(str(out_file), "wb") as output:
-                if data:  # Check if we have data
-                    output.setparams(data[0][0])
-                    for params, frames in data:
-                        output.writeframes(frames)
-
+            for cohort in wave_files.keys():
+                for session, files in wave_files[cohort].items():
+                    self._combine_wave_file_list(files, cohort, session)
+                    self.logger.info(f"Combined {len(files)} files in {session}")
             return True
         except Exception as e:
-            print(f"Error consolidating audio files: {e}")
+            self.logger.error(f"Error consolidating audio files: {e}")
             return False
 
     def load_noise_profile(self):
@@ -333,8 +358,11 @@ class AudioProcessing:
         ##set up for current code above.
 
     def process_directory(
-        self, input_dir: str, output_dir: str, noise_profile_path: str
-    ):
+        self,
+        input_dir: str | None = None,
+        output_dir: str | None = None,
+        noise_profile_path: str | None = None,
+    ) -> bool:
         """
         Complete processing pipeline for a directory.
 
@@ -349,10 +377,6 @@ class AudioProcessing:
             True if successful, False otherwise
         """
 
-        # Create output directory if it doesn't exist
-
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
-
         # Find all WAV files
         wav_files = self.find_wave_files()
 
@@ -363,16 +387,25 @@ class AudioProcessing:
         # Display found files
         self.display_found_files(wav_files)
 
-        # Consolidate files
-        consolidated_path = Path(output_dir) / "consolidated.wav"
-        if not self.consolidate_audio_files(wav_files, consolidated_path):
+        # Consolidate the files
+        # - 1. Protect against missing input
+        if not self.root_path and not input_dir:
+            raise ValueError("No input directory provided")
+        # - 2. Create output directory if it doesn't exist
+        self.combined_path.mkdir(parents=True, exist_ok=True)
+        # - 3. Call the function that will loop and consolidate the audio files
+        consolidated_success = self.consolidate_audio_files(wav_files)
+        if not consolidated_success:
             return False
 
-        # Apply filters
-        filtered_path = Path(output_dir, "filtered_.wav")
-        if noise_profile_path:
-            if not self.bandpass_filter(consolidated_path, noise_profile_path):
-                return False
+        # Apply filters if noise profile is provided
+        # if noise_profile_path:
+        #     self.filtered_path.mkdir(parents=True, exist_ok=True)
+        #     filter_success = self.bandpass_filter(consolidated_path, noise_profile_path)
+        #     if not filter_success:
+        #         return False
+
+        return True
 
     def display_found_files(self, wav_files: dict):
         """Display a table of found WAV files."""
@@ -396,5 +429,5 @@ if __name__ == "__main__":
     test_audio_processing = AudioProcessing(
         "/Users/djfurman/Downloads/amanda-data/Maternal_retrieval_USV"
     )
-    identified = test_audio_processing.find_wave_files()
-    test_audio_processing.display_found_files(identified)
+    result = test_audio_processing.process_directory()
+    print(result)

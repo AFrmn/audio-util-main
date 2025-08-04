@@ -51,12 +51,12 @@ class FolderSelector:
         """Show error message."""
         messagebox.showerror("Error", message)
 
-    def select_noise_folder(self) -> Optional[str]:
+    def select_noise_file(self) -> Optional[str]:
         """Open a file selection dialog for multiple noise files."""
-        folder = filedialog.askdirectory(
-            title="Select input directory for the noise file"
+        noise_file = filedialog.askopenfilename(
+            title="Select input directory for the noise file", defaultextension=".wav"
         )
-        return folder if folder else None
+        return noise_file if noise_file else None
 
 
 # Initialize Typer app
@@ -131,7 +131,7 @@ def process(
                 console.print(
                     "[yellow]Please select the noise profile file...[/yellow]"
                 )
-                noise_profile = folder_selector.select_noise_folder()
+                noise_profile = folder_selector.select_noise_file()
                 if noise_profile:
                     console.print(
                         f"[green]Selected noise profile: {os.path.basename(noise_profile)}[/green]"
@@ -221,7 +221,7 @@ def interactive():
             console.print(
                 "[yellow]Please select the noise profile directory...[/yellow]"
             )
-            noise_profile = folder_selector.select_noise_folder()
+            noise_profile = folder_selector.select_noise_file()
             if noise_profile:
                 console.print(
                     f"[green]Selected noise profile: {os.path.basename(noise_profile)}[/green]"
@@ -245,7 +245,7 @@ def interactive():
 
     params_table.add_row("Input Directory", input_dir)
     params_table.add_row("Output Directory", output_dir)
-    params_table.add_row("Noise Profile", noise_profile if noise_profile else "None")
+    params_table.add_row("Noise Profile", noise_profile if noise_profile else None)
 
     console.print(params_table)
 
