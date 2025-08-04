@@ -19,27 +19,15 @@ class AudioProcessing:
     def __init__(self, root_directory: Optional[str] = None):
         if root_directory is None:
             raise ValueError("root_directory cannot be None")
-        self.root_directory = root_directory
         self.root_path = Path(root_directory)
         self.out_path = self.root_path / Path("combined/")
-        self.final_path = self.root_path / Path("process/")
         self.noise_file = Path(root_directory)
-        self.npz_file = self.root_path / Path("noise/noise.npz")
+        # self.npz_file = self.root_path / Path("noise/noise.npz")
         self.console = Console()
         self.logger = self._setup_logging()
 
-        # create path output directory
+        # Create paths for results directories
         Path(self.out_path).mkdir(parents=True, exist_ok=True)
-
-        """
-        #Load Noise profile
-        self.noise_spectrum= self.load_noise_profile()
-
-        self.sample_rate = 256000
-
-        self.noise_spectrum = np.array([])
-        self.frequencies = np.array([])
-        """
 
     def _setup_logging(self) -> logging.Logger:
         """Setup logging configuration."""
@@ -48,7 +36,7 @@ class AudioProcessing:
         )
         return logging.getLogger(__name__)
 
-    def find_wave_files(self, root_directory: str) -> List[str]:
+    def find_wave_files(self) -> dict:
         """
         Recursively find all WAV files in directory and subdirectories.
 
@@ -56,15 +44,37 @@ class AudioProcessing:
             root_directory: Path to the root directory to search
 
         Returns:
-            List of WAV file paths
+            Dict of WAV file paths organized by cohort and session
         """
-        wav_files = []
-        for root, dirs, files in os.walk(root_directory):
-            wav_pattern = os.path.join(root, "*.wav")
-            wav_files.extend(glob.glob(wav_pattern))
+        wav_files = {}
+        # There is without question a better way to do this loop, but this was how I was able to debug it
+        for root, cohorts, _ in os.walk(str(self.root_path)):
+            for cohort in cohorts:
+                if cohort.startswith("Cohort"):
+                    wav_files[cohort] = {}
+                    for _, sessions, _ in os.walk(os.path.join(root, cohort)):
+                        for session in sessions:
+                            if session.startswith("Session"):
+                                wav_files[cohort][session] = []
+                                for _, _, files in os.walk(
+                                    os.path.join(root, cohort, session)
+                                ):
+                                    for file in files:
+                                        if file.endswith(".wav"):
+                                            wav_files[cohort][session].append(file)
 
-        self.logger.info(f"Found {len(wav_files)} WAV files in {root_directory}")
-        return sorted(wav_files)
+        self.logger.info(
+            f"Found {len(wav_files.keys())} cohorts in {str(self.root_path)}"
+        )
+
+        # This needs to be sorted for easy debugging and I wanted to log out the results of each
+        sorted_results = dict(sorted(wav_files.items()))
+        for cohort, sessions in wav_files.items():
+            self.logger.info(f"Found {len(sessions.keys())} sessions in {cohort}")
+            sorted_results[cohort] = dict(sorted(sessions.items()))
+            for session, files in sessions.items():
+                self.logger.info(f"Found {len(files)} files in {session}")
+        return sorted_results
 
     def load_audio_file(
         self, filepath: str
@@ -345,7 +355,7 @@ class AudioProcessing:
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
         # Find all WAV files
-        wav_files = self.find_wave_files(input_dir)
+        wav_files = self.find_wave_files()
 
         if not wav_files:
             self.console.print("[red]No WAV files found in directory[/red]")
@@ -365,19 +375,27 @@ class AudioProcessing:
             if not self.bandpass_filter(consolidated_path, noise_profile_path):
                 return False
 
-    def display_found_files(self, wav_files: List[str]):
+    def display_found_files(self, wav_files: dict):
         """Display a table of found WAV files."""
         table = Table(title="Found WAV Files")
-        table.add_column("Index", style="cyan", no_wrap=True)
-        table.add_column("File Name", style="magenta")
-        table.add_column("Directory", style="green")
+        table.add_column("Cohort", style="cyan", no_wrap=True)
+        table.add_column("Session", style="magenta")
+        table.add_column("Experiment Files", style="green")
 
-        for i, filepath in enumerate(wav_files, 1):
-            filename = os.path.basename(filepath)
-            directory = os.path.dirname(filepath)
-            table.add_row(str(i), filename, directory)
+        for cohort in wav_files.keys():
+            for session in wav_files[cohort].keys():
+                files = wav_files[cohort][session]
+                table.add_row(cohort, session, str(len(files)))
 
         self.console.print(table)
 
         self.console.print("[green]Processing completed successfully![/green]")
         return True
+
+
+if __name__ == "__main__":
+    test_audio_processing = AudioProcessing(
+        "/Users/djfurman/Downloads/amanda-data/Maternal_retrieval_USV"
+    )
+    identified = test_audio_processing.find_wave_files()
+    test_audio_processing.display_found_files(identified)
