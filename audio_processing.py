@@ -1,9 +1,8 @@
-import glob
 import logging
 import os
 import wave
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import numpy as np
 import scipy.io.wavfile as wavfile  # cSpell:ignore wavfile
