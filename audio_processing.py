@@ -21,8 +21,7 @@ class AudioProcessing:
         self.root_path = Path(root_directory)
         self.combined_path = self.root_path / Path("combined")
         self.filtered_path = self.root_path / Path("filtered")
-        self.noise_file = Path(root_directory)
-        # self.npz_file = self.root_path / Path("noise/noise.npz")
+        self.npz_file = self.root_path / Path("noise/noise.npz")
         self.console = Console()
         self.logger = self._setup_logging()
 
@@ -104,57 +103,91 @@ class AudioProcessing:
                 self.logger.info(f"Found {len(files)} files in {session}")
         return sorted_results
 
-    def load_audio_file(
-        self, filepath: str
-    ) -> Tuple[Optional[np.ndarray], Optional[int]]:  # cSpell:ignore ndarray
-        """
-        Load a WAV file and return audio data and sample rate.
+    def _subtract_spectral_noise_background(self, wave_files: dict) -> None:
+        # Load Noise Profile ONCE and Save as NZ-something
+        noise_data = (
+            self.load_noise_profile()
+        )  # todo! this doesn't work; I need to extract the noise data not from an .npz
+        noise_freqs, noise_psd = self.compute_noise_spectrum(noise_data)
+        noise_floor_db = self.get_noise_floor_db(noise_psd)
 
-        Args:
-            filepath: Path to the WAV file
+        # Save as npz file (somehow)
+        self.npz_file.mkdir(parents=True, exist_ok=True)
+        self.save_noise_spectrum(noise_freqs, noise_psd, noise_floor_db)
 
-        Returns:
-            Tuple of (audio_data, sample_rate)
-        """
-        try:
-            sample_rate, audio_data = wavfile.read(filepath)
+        # Create the filtered path
+        self.filtered_path.mkdir(parents=True, exist_ok=True)
 
-            # Convert to float32 and normalize
-            if audio_data.dtype == np.int16:
-                audio_data = audio_data.astype(np.float32) / 32768.0
-            elif audio_data.dtype == np.int32:
-                audio_data = audio_data.astype(np.float32) / 2147483648.0
-            elif audio_data.dtype == np.uint8:
-                audio_data = (audio_data.astype(np.float32) - 128) / 128.0
-            elif audio_data.dtype == np.float32:
-                # Already float32, but ensure it's in [-1, 1] range
-                if np.max(np.abs(audio_data)) > 1.0:
-                    audio_data = np.clip(audio_data, -1.0, 1.0)
-            elif audio_data.dtype == np.float64:
-                # Convert float64 to float32
-                audio_data = audio_data.astype(np.float32)
-            if np.max(np.abs(audio_data)) > 1.0:
-                audio_data = np.clip(audio_data, -1.0, 1.0)
-            else:
-                self.logger.warning(
-                    f"Unsupported audio format {audio_data.dtype} in {filepath}"
+        # Loop through consolidated files
+        for cohort in wave_files.keys():
+            for session in wave_files[cohort].keys():
+                combined_file_path = os.path.join(
+                    self.combined_path, cohort, session + ".wav"
                 )
-            # Try to convert to float32 anyway
-            audio_data = audio_data.astype(np.float32)
 
-            # Ensure audio_data is contiguous in memory for better performance
-            audio_data = np.ascontiguousarray(
-                audio_data
-            )  # cSpell:ignore ascontiguousarray
+                # Open the file & turn the combined_file_path into whatever noise_data is so I can subtract it
+                freqs, psd = self.compute_noise_spectrum(
+                    noise_data
+                )  # todo! swap this for whatever the right method is
+                # Subtract the noise and the floor DB
+                # Apply the Bandpass UltraSonic (US) filter
 
-            return audio_data, sample_rate
+                # Output each new filtered file
+                filtered_file_path = os.path.join(
+                    self.filtered_path, cohort, session + ".wav"
+                )
 
-        except FileNotFoundError:
-            self.logger.error(f"File not found: {filepath}")
-            return None, None
-        except Exception as e:
-            self.logger.error(f"Error loading {filepath}: {e}")
-            return None, None
+    # def load_audio_file(
+    #     self, filepath: str
+    # ) -> Tuple[Optional[np.ndarray], Optional[int]]:  # cSpell:ignore ndarray
+    #     """
+    #     Load a WAV file and return audio data and sample rate.
+
+    #     Args:
+    #         filepath: Path to the WAV file
+
+    #     Returns:
+    #         Tuple of (audio_data, sample_rate)
+    #     """
+    #     try:
+    #         sample_rate, audio_data = wavfile.read(filepath)
+
+    #         # Convert to float32 and normalize
+    #         if audio_data.dtype == np.int16:
+    #             audio_data = audio_data.astype(np.float32) / 32768.0
+    #         elif audio_data.dtype == np.int32:
+    #             audio_data = audio_data.astype(np.float32) / 2147483648.0
+    #         elif audio_data.dtype == np.uint8:
+    #             audio_data = (audio_data.astype(np.float32) - 128) / 128.0
+    #         elif audio_data.dtype == np.float32:
+    #             # Already float32, but ensure it's in [-1, 1] range
+    #             if np.max(np.abs(audio_data)) > 1.0:
+    #                 audio_data = np.clip(audio_data, -1.0, 1.0)
+    #         elif audio_data.dtype == np.float64:
+    #             # Convert float64 to float32
+    #             audio_data = audio_data.astype(np.float32)
+    #         if np.max(np.abs(audio_data)) > 1.0:
+    #             audio_data = np.clip(audio_data, -1.0, 1.0)
+    #         else:
+    #             self.logger.warning(
+    #                 f"Unsupported audio format {audio_data.dtype} in {filepath}"
+    #             )
+    #         # Try to convert to float32 anyway
+    #         audio_data = audio_data.astype(np.float32)
+
+    #         # Ensure audio_data is contiguous in memory for better performance
+    #         audio_data = np.ascontiguousarray(
+    #             audio_data
+    #         )  # cSpell:ignore ascontiguousarray
+
+    #         return audio_data, sample_rate
+
+    #     except FileNotFoundError:
+    #         self.logger.error(f"File not found: {filepath}")
+    #         return None, None
+    #     except Exception as e:
+    #         self.logger.error(f"Error loading {filepath}: {e}")
+    #         return None, None
 
     def consolidate_audio_files(self, wave_files: dict) -> bool:
         """
@@ -172,6 +205,7 @@ class AudioProcessing:
                 for session, files in wave_files[cohort].items():
                     self._combine_wave_file_list(files, cohort, session)
                     self.logger.info(f"Combined {len(files)} files in {session}")
+            self.console.print("[green]Processing completed successfully![/green]")
             return True
         except Exception as e:
             self.logger.error(f"Error consolidating audio files: {e}")
@@ -180,18 +214,16 @@ class AudioProcessing:
     def load_noise_profile(self):
         # Load and compute noise spectrum from noise file
         try:
-            noise_data = wavfile.read(self.noise_file)
+            noise_data = wavfile.read(self.npz_file)
             # convert to float and normalize
             noise_data_array = np.array(noise_data)
             converted_noise_data = noise_data_array.astype(float)
             if converted_noise_data.dtype == np.int16:
-                converted_noise_data = converted_noise_data.astype(np.float32) / 32768.0
+                return converted_noise_data.astype(np.float32) / 32_768.0
             elif converted_noise_data == np.int32:
-                converted_noise_data = (
-                    converted_noise_data.astype(np.float32) / 2147483648.0
-                )
+                return converted_noise_data.astype(np.float32) / 2_147_483_648.0
         except Exception as e:
-            raise Exception(f"Error loading audio file: {e}")
+            raise ValueError(f"Error loading audio file: {e}")
 
     def compute_noise_spectrum(
         self,
@@ -214,17 +246,10 @@ class AudioProcessing:
             scaling="density",
         )
 
-        # store file for background subtraction
-        self.frequencies = frequencies
-        self.noise_spectrum = psd
-
         return frequencies, psd
 
-    def get_noise_floor_db(self):
-        if self.noise_spectrum is None:
-            raise ValueError("compute noise spectrum first")
-        noise_db = 10 * np.log10(self.noise_spectrum + 1e-12)
-        return noise_db
+    def get_noise_floor_db(self, psd):
+        return 10 * np.log10(psd + 1e-12)
 
     def get_US_band_noise(self, freq_min=15000, freq_max=120000):
         if self.noise_spectrum is None:
@@ -245,20 +270,17 @@ class AudioProcessing:
         }
         return stats
 
-    def save_noise_spectrum(self):
+    def save_noise_spectrum(self, frequencies, psd, sampling_rate: int = 256_000):
         """
         Save computed noise spectrum to file
         """
-        if self.noise_spectrum is None:
-            raise ValueError("Compute noise spectrum first")
-
         np.savez(  # cSpell:ignore savez
-            str(self.noise_file),
-            frequencies=self.frequencies,
-            noise_psd=self.noise_spectrum,
-            sampling_rate=self.sample_rate,
+            str(self.npz_file),
+            frequencies=frequencies,
+            noise_psd=psd,
+            sampling_rate=sampling_rate,
         )
-        print(f"Noise spectrum saved to {self.noise_file}")
+        print(f"Noise spectrum saved to {str(self.npz_file)}")
 
     def load_noise_spectrum(self, filepath):
         """
@@ -391,6 +413,8 @@ class AudioProcessing:
         # - 1. Protect against missing input
         if not self.root_path and not input_dir:
             raise ValueError("No input directory provided")
+        if not self.root_path and input_dir is not None:
+            self.root_path = Path(input_dir)
         # - 2. Create output directory if it doesn't exist
         self.combined_path.mkdir(parents=True, exist_ok=True)
         # - 3. Call the function that will loop and consolidate the audio files
@@ -420,9 +444,6 @@ class AudioProcessing:
                 table.add_row(cohort, session, str(len(files)))
 
         self.console.print(table)
-
-        self.console.print("[green]Processing completed successfully![/green]")
-        return True
 
 
 if __name__ == "__main__":
