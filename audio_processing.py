@@ -7,6 +7,8 @@ from typing import Optional
 import scipy.io.wavfile as wavfile  # cSpell:ignore wavfile
 from rich.console import Console
 import noisereduce as nr
+import numpy
+import librosa
 
 from rich.table import Table
 from scipy.signal import butter, filtfilt  # cSpell:ignore filtfilt
@@ -101,18 +103,24 @@ class AudioProcessing:
         return sorted_results
 
     def _process_audio_files(self, wave_files: dict) -> None:
-        for cohort in wave_files.keys():
-            for session in wave_files[cohort].keys():
+        for combined in wave_files.keys():
+            for cohort in wave_files[combined].keys():
                 self._process_audio_file(
                     os.path.join(
-                        self.combined_path, cohort, session + ".wav"
+                    self.combined_path, combined, cohort, "session.wav"
                     ),  # cSpell:ignore wav
                     self.noise_profile_path,
-                    os.path.join(self.filtered_path, cohort, session + ".wav"),
-                )
+                    os.path.join(self.filtered_path, cohort, "session.wav"),
+                    )
 
     def _process_audio_file(self, file_path, noise_path, save_path) -> None:
-        sr, audio = wavfile.read(file_path)
+        file_path = self.combined_path
+        noise_path = self.noise_profile_path
+        save_path = self.filtered_path
+
+        sr = 256_000
+
+        sr, audio = wavfile.read(file_path + 'cohort' + '.wav')
         _, noise = wavfile.read(noise_path)
 
         nyquist = sr / 2  # cSpell:ignore nyquist
@@ -126,7 +134,6 @@ class AudioProcessing:
             sr=sr,
             y_noise=noise_filtered,
             prop_decrease=0.7,
-            stationary=False,
             chunk_size=512,
         )
 
