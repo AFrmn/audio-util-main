@@ -1,6 +1,6 @@
 import logging
 import os
-import glob
+
 import wave
 from pathlib import Path
 from typing import Optional
@@ -8,7 +8,7 @@ from typing import Optional
 import scipy.io.wavfile as wavfile  # cSpell:ignore wavfile
 from rich.console import Console
 import noisereduce as nr
-import numpy
+
 import librosa
 
 from rich.table import Table
