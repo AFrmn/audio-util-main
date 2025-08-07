@@ -113,32 +113,49 @@ class AudioProcessing:
                     os.path.join(self.filtered_path, cohort, "session.wav"),
                     )
 
-    def _process_audio_file(self, file_path, noise_path, save_path) -> None:
-        file_path = self.combined_path
-        noise_path = self.noise_profile_path
+    def _process_audio_file(self, audio_path, noise_path, save_path) -> None:
+        audio_path = "combined/cohort"
+        wav_files = glob.glob(os.path.join(audio_path, "*.wav"))
+        noise_path = "root_directory/Noise"
         save_path = self.filtered_path
-
         sr = 256_000
 
-        sr, audio = wavfile.read(file_path + 'cohort' + '.wav')
-        _, noise = wavfile.read(noise_path)
+        for audio_path in wav_files:
+            print(f"Loading: {audio_path}")
+            try:
+                audio, sr = librosa.load(audio_path, sr=None)
+                noise, _ = librosa.load(noise_path, sr=sr)
+                print(f"Successfully loaded {audio_path}, shape: {audio.shape}, sample rate: {sr}")
+        
+        # Process only if loading was successful
+                nyquist = sr / 2
+                high_cutoff = 10_000 / nyquist
+                b, a = butter(4, high_cutoff, btype="highpass", analog=False, output="ba")
+                audio_filtered = filtfilt(b, a, audio)
+                noise_filtered = filtfilt(b, a, noise)
 
-        nyquist = sr / 2  # cSpell:ignore nyquist
-        high_cutoff = 10_000 / nyquist
-        b, a = butter(4, high_cutoff, btype="highpass", analog=False, output="ba")
-        audio_filtered = filtfilt(b, a, audio)
-        noise_filtered = filtfilt(b, a, noise)
-
-        cleaned_audio = nr.reduce_noise(
-            y=audio_filtered,
-            sr=sr,
-            y_noise=noise_filtered,
-            prop_decrease=0.7,
-            chunk_size=512,
-        )
-
-        wavfile.write(save_path, sr, cleaned_audio.astype(audio.dtype))
-        self.logger.info(f"Processed noise reduction and saved to {save_path}")
+                cleaned_audio = nr.reduce_noise(
+                    y=audio_filtered,
+                    sr=sr,
+                    y_noise=noise_filtered,
+                    prop_decrease=0.7,
+                    chunk_size=512,
+                )
+        
+        # Create unique save path for each file
+                base_name = os.path.splitext(os.path.basename(audio_path))[0]
+                current_save_path = f"{save_path}/{base_name}_cleaned.wav"
+        
+                wavfile.write(current_save_path, sr, cleaned_audio.astype(audio.dtype))
+                self.logger.info(f"Processed noise reduction and saved to {current_save_path}")
+        
+            except FileNotFoundError:
+                print(f"File not found: {audio_path}")
+                continue
+            except Exception as e:
+                print(f"Error processing {audio_path}: {e}")
+                continue
+        return True
 
     def consolidate_audio_files(self, wave_files: dict) -> bool:
         """
