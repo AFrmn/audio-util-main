@@ -104,35 +104,35 @@ class AudioProcessing:
         return sorted_results
 
     def _process_audio_files(self, wave_files: dict) -> None:
-    for cohort in wave_files.keys():
+        for cohort in wave_files.keys():
         for session in wave_files[cohort].keys():
             combined_file = self.combined_path / cohort / f"{session}.wav"
-            if combined_file.exists():
-                output_file = self.filtered_path / cohort / f"{session}_filtered.wav"
-                output_file.parent.mkdir(parents=True, exist_ok=True)
-                self._process_audio_file(
-                    str(combined_file),
-                    self.noise_profile_path,
-                    str(output_file)
-                )
+        if combined_file.exists():
+            output_file = self.filtered_path / cohort / f"{session}_filtered.wav"
+            output_file.parent.mkdir(parents=True, exist_ok=True)
+            self._process_audio_file(
+                str(combined_file),
+                self.noise_profile_path,
+                str(output_file)
+            )
 
     def _process_audio_file(self, audio_path, noise_path, save_path) -> None:
-    try:
-        print(f"Loading: {audio_path}")
-        
+        try:
+            print(f"Loading: {audio_path}")
+    
         # Load audio and noise files
         audio, sr = librosa.load(audio_path, sr=None)
         noise, _ = librosa.load(noise_path, sr=sr)
         print(f"Successfully loaded {audio_path}, shape: {audio.shape}, sample rate: {sr}")
-        
-        # Apply high-pass filter
+    
+    # Apply high-pass filter
         nyquist = sr / 2
         high_cutoff = 10_000 / nyquist
         b, a = butter(4, high_cutoff, btype="highpass", analog=False, output="ba")
         audio_filtered = filtfilt(b, a, audio)
         noise_filtered = filtfilt(b, a, noise)
 
-        # Apply noise reduction
+    # Apply noise reduction
         cleaned_audio = nr.reduce_noise(
             y=audio_filtered,
             sr=sr,
@@ -140,14 +140,14 @@ class AudioProcessing:
             prop_decrease=0.7,
             chunk_size=512,
         )
-        
-        # Save the processed audio
+    
+    # Save the processed audio
         wavfile.write(save_path, sr, cleaned_audio.astype(audio.dtype))
         self.logger.info(f"Processed noise reduction and saved to {save_path}")
-        
-    except FileNotFoundError as e:
+    
+        except FileNotFoundError as e:
         self.logger.error(f"File not found: {audio_path} or {noise_path}")
-    except Exception as e:
+        except Exception as e:
         self.logger.error(f"Error processing {audio_path}: {e}")
         
     def consolidate_audio_files(self, wave_files: dict) -> bool:
